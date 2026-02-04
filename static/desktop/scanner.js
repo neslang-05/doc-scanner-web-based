@@ -298,6 +298,9 @@ class DesktopScanner {
                             const latency = Date.now() - data.timestamp;
                             this.updateLatencyStats(latency);
                         }
+                    } else if (data.type === 'heartbeat') {
+                        // Heartbeat received, connection is alive
+                        // No action needed
                     }
                 } catch (error) {
                     console.error('Frame processing error:', error);

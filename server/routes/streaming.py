@@ -1,6 +1,7 @@
 """
 Video Streaming Routes
 WebSocket-based video streaming from mobile camera to desktop preview.
+Uses a shared queue system for reliable frame delivery.
 """
 
 from flask import Blueprint, request, jsonify
@@ -8,12 +9,16 @@ from flask_sock import Sock
 import base64
 import time
 import json
+import queue
+import threading
 
 
 streaming_bp = Blueprint('streaming', __name__, url_prefix='/api/streaming')
 
-# Store active streaming connections
+# Store active streaming connections with frame queues for each desktop client
 active_streams = {}
+# Lock for thread-safe access to active_streams
+streams_lock = threading.Lock()
 
 
 def init_streaming(app):
@@ -38,16 +43,21 @@ def init_streaming(app):
         print(f"Stream connection established for session: {session_id}")
         
         # Register this connection
-        if session_id not in active_streams:
-            active_streams[session_id] = {
-                'mobile': None,
-                'desktop': [],
-                'stats': {
-                    'frames_received': 0,
-                    'frames_sent': 0,
-                    'start_time': time.time()
+        with streams_lock:
+            if session_id not in active_streams:
+                active_streams[session_id] = {
+                    'mobile': None,
+                    'desktop_queues': {},  # Changed: dict of client_id -> queue
+                    'stats': {
+                        'frames_received': 0,
+                        'frames_sent': 0,
+                        'start_time': time.time()
+                    }
                 }
-            }
+        
+        client_id = id(ws)  # Unique identifier for this connection
+        frame_queue = None
+        client_type = None
         
         try:
             # Determine if this is mobile (sender) or desktop (receiver)
@@ -59,7 +69,8 @@ def init_streaming(app):
             
             if client_type == 'mobile':
                 # Mobile sender - receives frames and broadcasts to desktop viewers
-                active_streams[session_id]['mobile'] = ws
+                with streams_lock:
+                    active_streams[session_id]['mobile'] = ws
                 print(f"Mobile camera connected for session: {session_id}")
                 
                 # Handle incoming video frames from mobile
@@ -67,51 +78,69 @@ def init_streaming(app):
                     try:
                         frame_data = ws.receive()
                         if frame_data:
-                            active_streams[session_id]['stats']['frames_received'] += 1
-                            
-                            # Broadcast to all connected desktop viewers
-                            desktop_clients = active_streams[session_id]['desktop']
-                            for desktop_ws in desktop_clients[:]:  # Copy list to avoid modification issues
-                                try:
-                                    desktop_ws.send(frame_data)
-                                    active_streams[session_id]['stats']['frames_sent'] += 1
-                                except:
-                                    # Remove disconnected desktop clients
-                                    if desktop_ws in desktop_clients:
-                                        desktop_clients.remove(desktop_ws)
-                    except:
+                            with streams_lock:
+                                active_streams[session_id]['stats']['frames_received'] += 1
+                                
+                                # Put frame in all desktop client queues
+                                for q in active_streams[session_id]['desktop_queues'].values():
+                                    try:
+                                        # Non-blocking put, drop old frames if queue is full
+                                        if q.full():
+                                            try:
+                                                q.get_nowait()
+                                            except queue.Empty:
+                                                pass
+                                        q.put_nowait(frame_data)
+                                    except queue.Full:
+                                        pass  # Skip this frame for this client
+                    except Exception as e:
+                        print(f"Mobile receive error: {e}")
                         break
                         
             elif client_type == 'desktop':
-                # Desktop receiver - receives frames from mobile
-                active_streams[session_id]['desktop'].append(ws)
+                # Desktop receiver - receives frames via queue
+                frame_queue = queue.Queue(maxsize=5)  # Buffer up to 5 frames
+                
+                with streams_lock:
+                    active_streams[session_id]['desktop_queues'][client_id] = frame_queue
                 print(f"Desktop viewer connected for session: {session_id}")
                 
-                # Keep connection alive and wait for frames
-                # Frames are pushed from mobile handler
+                # Send frames from queue to this desktop client
                 while True:
                     try:
-                        # Just keep the connection alive
-                        # Actual frames are pushed from mobile handler
-                        time.sleep(0.1)
-                    except:
+                        # Wait for frame with timeout to allow checking connection
+                        frame_data = frame_queue.get(timeout=1.0)
+                        ws.send(frame_data)
+                        with streams_lock:
+                            active_streams[session_id]['stats']['frames_sent'] += 1
+                    except queue.Empty:
+                        # No frame available, send heartbeat to check connection
+                        try:
+                            ws.send(json.dumps({'type': 'heartbeat'}))
+                        except:
+                            break
+                    except Exception as e:
+                        print(f"Desktop send error: {e}")
                         break
                         
         except Exception as e:
             print(f"Stream error for session {session_id}: {e}")
         finally:
             # Clean up on disconnect
-            if session_id in active_streams:
-                if active_streams[session_id]['mobile'] == ws:
-                    active_streams[session_id]['mobile'] = None
-                    print(f"Mobile camera disconnected for session: {session_id}")
-                elif ws in active_streams[session_id]['desktop']:
-                    active_streams[session_id]['desktop'].remove(ws)
-                    print(f"Desktop viewer disconnected for session: {session_id}")
-                
-                # Clean up session if no more connections
-                if not active_streams[session_id]['mobile'] and not active_streams[session_id]['desktop']:
-                    del active_streams[session_id]
+            with streams_lock:
+                if session_id in active_streams:
+                    if client_type == 'mobile' and active_streams[session_id]['mobile'] == ws:
+                        active_streams[session_id]['mobile'] = None
+                        print(f"Mobile camera disconnected for session: {session_id}")
+                    elif client_type == 'desktop' and client_id in active_streams[session_id]['desktop_queues']:
+                        del active_streams[session_id]['desktop_queues'][client_id]
+                        print(f"Desktop viewer disconnected for session: {session_id}")
+                    
+                    # Clean up session if no more connections
+                    if (session_id in active_streams and 
+                        not active_streams[session_id]['mobile'] and 
+                        not active_streams[session_id]['desktop_queues']):
+                        del active_streams[session_id]
 
 
 @streaming_bp.route('/<session_id>/stats', methods=['GET'])
@@ -125,22 +154,23 @@ def get_streaming_stats(session_id):
     Returns:
         JSON with streaming statistics
     """
-    if session_id not in active_streams:
+    with streams_lock:
+        if session_id not in active_streams:
+            return jsonify({
+                "active": False,
+                "message": "No active stream"
+            }), 404
+        
+        stats = active_streams[session_id]['stats']
+        elapsed_time = time.time() - stats['start_time']
+        
         return jsonify({
-            "active": False,
-            "message": "No active stream"
-        }), 404
-    
-    stats = active_streams[session_id]['stats']
-    elapsed_time = time.time() - stats['start_time']
-    
-    return jsonify({
-        "active": True,
-        "mobile_connected": active_streams[session_id]['mobile'] is not None,
-        "desktop_viewers": len(active_streams[session_id]['desktop']),
-        "frames_received": stats['frames_received'],
-        "frames_sent": stats['frames_sent'],
-        "elapsed_seconds": round(elapsed_time, 2),
-        "fps_received": round(stats['frames_received'] / elapsed_time, 2) if elapsed_time > 0 else 0,
-        "fps_sent": round(stats['frames_sent'] / elapsed_time, 2) if elapsed_time > 0 else 0
-    }), 200
+            "active": True,
+            "mobile_connected": active_streams[session_id]['mobile'] is not None,
+            "desktop_viewers": len(active_streams[session_id]['desktop_queues']),
+            "frames_received": stats['frames_received'],
+            "frames_sent": stats['frames_sent'],
+            "elapsed_seconds": round(elapsed_time, 2),
+            "fps_received": round(stats['frames_received'] / elapsed_time, 2) if elapsed_time > 0 else 0,
+            "fps_sent": round(stats['frames_sent'] / elapsed_time, 2) if elapsed_time > 0 else 0
+        }), 200

@@ -13,6 +13,7 @@ class MobileCameraStream {
         this.frameInterval = null;
         this.canvas = null;
         this.context = null;
+        this.isSendingFrame = false;
         
         this.elements = {
             video: document.getElementById('cameraVideo'),
@@ -152,10 +153,12 @@ class MobileCameraStream {
         // Get video dimensions
         const video = this.elements.video;
         
-        // Wait for video to have dimensions
-        video.addEventListener('loadedmetadata', () => {
+        let initialized = false;
+        const initializeOnce = () => {
+            if (initialized) return;
+            initialized = true;
+            
             // Scale down for preview streaming to save bandwidth
-            // We only need high-res for the actual capture, not the preview
             const maxPreviewSize = 800;
             const scale = Math.min(1.0, maxPreviewSize / Math.max(video.videoWidth, video.videoHeight));
             
@@ -166,15 +169,14 @@ class MobileCameraStream {
             
             // Connect WebSocket
             this.connectWebSocket();
-        });
+        };
+        
+        // Wait for video to have dimensions
+        video.addEventListener('loadedmetadata', initializeOnce);
         
         // If meta data already loaded
         if (video.videoWidth > 0) {
-            const maxPreviewSize = 800;
-            const scale = Math.min(1.0, maxPreviewSize / Math.max(video.videoWidth, video.videoHeight));
-            this.canvas.width = video.videoWidth * scale;
-            this.canvas.height = video.videoHeight * scale;
-            this.connectWebSocket();
+            initializeOnce();
         }
     }
     
@@ -208,6 +210,14 @@ class MobileCameraStream {
                 console.log('WebSocket closed');
                 this.stopFrameCapture();
                 this.updateStatus('Disconnected', false);
+                
+                // Attempt to reconnect if session still active
+                if (this.sessionId) {
+                    setTimeout(() => {
+                        console.log('Attempting to reconnect...');
+                        this.connectWebSocket();
+                    }, 2000);
+                }
             };
             
         } catch (error) {
@@ -243,35 +253,49 @@ class MobileCameraStream {
      * Capture a frame from video and send via WebSocket
      */
     captureAndSendFrame() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.isSendingFrame) {
             return;
         }
         
         try {
             const video = this.elements.video;
+            if (!video.videoWidth) return;
+
+            this.isSendingFrame = true;
             
             // Draw current video frame to canvas
             this.context.drawImage(video, 0, 0, this.canvas.width, this.canvas.height);
             
-            // Convert to JPEG with compression (quality 0.7 for bandwidth optimization)
+            // Convert to JPEG with compression
             this.canvas.toBlob((blob) => {
                 if (blob && this.ws && this.ws.readyState === WebSocket.OPEN) {
                     // Convert blob to base64 and send
                     const reader = new FileReader();
                     reader.onloadend = () => {
-                        const base64data = reader.result;
-                        this.ws.send(JSON.stringify({
-                            type: 'frame',
-                            data: base64data,
-                            timestamp: Date.now()
-                        }));
+                        try {
+                            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                                const base64data = reader.result;
+                                this.ws.send(JSON.stringify({
+                                    type: 'frame',
+                                    data: base64data,
+                                    timestamp: Date.now()
+                                }));
+                            }
+                        } catch (e) {
+                            console.error('Send error:', e);
+                        } finally {
+                            this.isSendingFrame = false;
+                        }
                     };
                     reader.readAsDataURL(blob);
+                } else {
+                    this.isSendingFrame = false;
                 }
-            }, 'image/jpeg', 0.7);
+            }, 'image/jpeg', 0.6); // Lower quality slightly for better stability
             
         } catch (error) {
             console.error('Frame capture error:', error);
+            this.isSendingFrame = false;
         }
     }
     

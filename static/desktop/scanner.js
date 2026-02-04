@@ -235,6 +235,7 @@ class DesktopScanner {
      * Update camera connection status
      */
     updateCameraStatus(connected) {
+        const wasConnected = this.cameraConnected;
         this.cameraConnected = connected;
         
         if (connected) {
@@ -244,8 +245,10 @@ class DesktopScanner {
             this.elements.livePreview.style.display = 'block';
             this.elements.captureBtn.disabled = false;
             
-            // Connect to video stream
-            this.connectToVideoStream();
+            // Connect to video stream if not already connected
+            if (!wasConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                this.connectToVideoStream();
+            }
         } else {
             this.elements.cameraStatus.textContent = 'Disconnected';
             this.elements.cameraStatus.className = 'status-badge status-disconnected';
@@ -262,10 +265,16 @@ class DesktopScanner {
     connectToVideoStream() {
         if (!this.sessionId) return;
         
+        // Don't connect if already connecting or open
+        if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+        
         try {
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${wsProtocol}//${window.location.host}/ws/stream/${this.sessionId}`;
             
+            console.log('Connecting to video stream...');
             this.ws = new WebSocket(wsUrl);
             
             // Create image element for displaying frames

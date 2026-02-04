@@ -4,8 +4,8 @@ API endpoints for capturing and managing scanned document images.
 """
 
 from flask import Blueprint, request, jsonify, send_file, current_app
-from services.session_manager import SessionManager
-from services.image_storage import ImageStorage
+from server.services.session_manager import SessionManager
+from server.services.image_storage import ImageStorage
 import time
 import base64
 import io

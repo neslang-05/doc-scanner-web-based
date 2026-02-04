@@ -4,10 +4,10 @@ API endpoints for PDF generation, OCR, and file downloads.
 """
 
 from flask import Blueprint, request, jsonify, send_file
-from services.session_manager import SessionManager
-from services.image_storage import ImageStorage
-from services.pdf_builder import PDFBuilder
-from services.ocr_service import OCRService
+from server.services.session_manager import SessionManager
+from server.services.image_storage import ImageStorage
+from server.services.pdf_builder import PDFBuilder
+from server.services.ocr_service import OCRService
 from pathlib import Path
 import secrets
 from datetime import datetime, timedelta

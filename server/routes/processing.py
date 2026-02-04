@@ -4,9 +4,9 @@ API endpoints for image processing and enhancement.
 """
 
 from flask import Blueprint, request, jsonify, send_file
-from services.session_manager import SessionManager
-from services.image_storage import ImageStorage
-from services.image_processor import ImageProcessor
+from server.services.session_manager import SessionManager
+from server.services.image_storage import ImageStorage
+from server.services.image_processor import ImageProcessor
 import cv2
 import numpy as np
 from pathlib import Path

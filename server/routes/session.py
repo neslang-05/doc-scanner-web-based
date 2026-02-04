@@ -4,8 +4,8 @@ API endpoints for session creation, validation, and status checking.
 """
 
 from flask import Blueprint, jsonify, request
-from services.session_manager import SessionManager
-from utils.qr_generator import generate_pairing_qr
+from server.services.session_manager import SessionManager
+from server.utils.qr_generator import generate_pairing_qr
 
 
 session_bp = Blueprint('session', __name__, url_prefix='/api/session')

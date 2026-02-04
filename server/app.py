@@ -15,11 +15,11 @@ import os
 from pathlib import Path
 
 # Import route blueprints
-from routes.session import session_bp
-from routes.capture import capture_bp
-from routes.streaming import streaming_bp, init_streaming
-from routes.processing import processing_bp
-from routes.export import export_bp
+from server.routes.session import session_bp
+from server.routes.capture import capture_bp
+from server.routes.streaming import streaming_bp, init_streaming
+from server.routes.processing import processing_bp
+from server.routes.export import export_bp
 import threading
 import time
 import logging
@@ -43,7 +43,7 @@ def setup_logging(app):
 def start_cleanup_worker(app):
     """Start a background thread to clean up expired sessions."""
     def cleanup_loop():
-        from services.session_manager import SessionManager
+        from server.services.session_manager import SessionManager
         session_manager = SessionManager()
         while True:
             try:

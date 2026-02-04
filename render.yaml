@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: web-document-scanner
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class gevent --workers 1 --bind 0.0.0.0:$PORT "server.app:create_app()"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEVENT_MONKEY_PATCH
+        value: "true"
+      - key: MAX_FILE_SIZE_MB
+        value: "16"
+      - key: SESSION_DURATION_HOURS
+        value: "4"
+      - key: MAX_PAGES_PER_SESSION
+        value: "100"

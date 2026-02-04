@@ -166,16 +166,16 @@ web-based-scanner/
 
 ## Deployment
 
-### Deploy to Railway
+### Deploy to Render
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template?template=https://github.com/yourusername/web-based-scanner)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yourusername/web-based-scanner)
 
 1. Click the button above.
 2. Connect your GitHub account.
-3. Railway will automatically detect the `Procfile` and `requirements.txt`.
-4. Your scanner will be live at `https://your-app-name.railway.app`.
+3. Render will use the `render.yaml` blueprint to set up the service.
+4. Your scanner will be live at `https://web-document-scanner.onrender.com`.
 
-**Note**: Since Railway uses an ephemeral filesystem, session data will be lost when the server restarts. Download your PDFs immediately after creation.
+**Note**: Since Render's free tier uses an ephemeral filesystem, session data will be lost when the service spins down or restarts. Download your PDFs immediately.
 
 ### Local Deployment
 

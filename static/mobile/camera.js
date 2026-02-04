@@ -154,12 +154,28 @@ class MobileCameraStream {
         
         // Wait for video to have dimensions
         video.addEventListener('loadedmetadata', () => {
-            this.canvas.width = video.videoWidth;
-            this.canvas.height = video.videoHeight;
+            // Scale down for preview streaming to save bandwidth
+            // We only need high-res for the actual capture, not the preview
+            const maxPreviewSize = 800;
+            const scale = Math.min(1.0, maxPreviewSize / Math.max(video.videoWidth, video.videoHeight));
+            
+            this.canvas.width = video.videoWidth * scale;
+            this.canvas.height = video.videoHeight * scale;
+            
+            console.log(`Video initialized: ${video.videoWidth}x${video.videoHeight}, Preview scale: ${scale.toFixed(2)} (${this.canvas.width}x${this.canvas.height})`);
             
             // Connect WebSocket
             this.connectWebSocket();
         });
+        
+        // If meta data already loaded
+        if (video.videoWidth > 0) {
+            const maxPreviewSize = 800;
+            const scale = Math.min(1.0, maxPreviewSize / Math.max(video.videoWidth, video.videoHeight));
+            this.canvas.width = video.videoWidth * scale;
+            this.canvas.height = video.videoHeight * scale;
+            this.connectWebSocket();
+        }
     }
     
     /**
@@ -204,8 +220,8 @@ class MobileCameraStream {
      * Start capturing and sending video frames
      */
     startFrameCapture() {
-        // Capture at 15 FPS (lower than camera for bandwidth optimization)
-        const fps = 15;
+        // Capture at 10 FPS (sufficient for preview)
+        const fps = 10;
         const interval = 1000 / fps;
         
         this.frameInterval = setInterval(() => {

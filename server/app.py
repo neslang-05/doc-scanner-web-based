@@ -4,10 +4,12 @@ Main server for the web-based document scanner.
 """
 
 # Monkey patch for gevent compatibility
-import os
-if os.environ.get('GEVENT_MONKEY_PATCH', 'False').lower() == 'true':
+try:
     from gevent import monkey
     monkey.patch_all()
+    print("LOG: Gevent monkey patching applied - Version 1.0.2")
+except ImportError:
+    print("LOG: Gevent not found, skipping monkey patch")
 
 from flask import Flask, send_from_directory, render_template_string
 from flask_cors import CORS

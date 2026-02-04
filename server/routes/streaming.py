@@ -79,7 +79,7 @@ def init_streaming(app):
                 # Mobile sender - receives frames and broadcasts to desktop viewers
                 with streams_lock:
                     active_streams[session_id]['mobile'] = ws
-                add_log('INFO', 'streaming', 'Mobile camera connected', {'session_id': session_id[:12]})
+                add_log('INFO', 'streaming_mobile', 'Mobile camera connected', {'session_id': session_id[:12]})
                 
                 # Handle incoming video frames from mobile
                 while True:
@@ -90,7 +90,11 @@ def init_streaming(app):
                                 active_streams[session_id]['stats']['frames_received'] += 1
                                 
                                 # Put frame in all desktop client queues
-                                for q in active_streams[session_id]['desktop_queues'].values():
+                                active_queues = active_streams[session_id]['desktop_queues']
+                                if not active_queues:
+                                    continue
+                                    
+                                for q_id, q in active_queues.items():
                                     try:
                                         # Non-blocking put, drop old frames if queue is full
                                         if q.full():
@@ -100,36 +104,46 @@ def init_streaming(app):
                                                 pass
                                         q.put_nowait(frame_data)
                                     except queue.Full:
-                                        pass  # Skip this frame for this client
+                                        pass
+                        else:
+                            # Connection closed cleanly
+                            break
                     except Exception as e:
-                        add_log('ERROR', 'streaming', f'Mobile receive error: {str(e)}', {'session_id': session_id[:12]})
+                        add_log('ERROR', 'streaming_mobile', f'Mobile receive error: {str(e)}', {'session_id': session_id[:12]})
                         break
                         
             elif client_type == 'desktop':
                 # Desktop receiver - receives frames via queue
-                frame_queue = queue.Queue(maxsize=5)  # Buffer up to 5 frames
+                frame_queue = queue.Queue(maxsize=3)  # Buffer up to 3 frames
                 
                 with streams_lock:
                     active_streams[session_id]['desktop_queues'][client_id] = frame_queue
-                add_log('INFO', 'streaming', 'Desktop viewer connected', {'session_id': session_id[:12], 'client_id': client_id})
+                add_log('INFO', 'streaming_desktop', 'Desktop viewer connected', {'session_id': session_id[:12], 'client_id': client_id})
                 
                 # Send frames from queue to this desktop client
                 while True:
+                    # 1. Drain any pending messages from client to keep socket alive and detect disconnect
                     try:
-                        # Wait for frame with timeout to allow checking connection
-                        frame_data = frame_queue.get(timeout=1.0)
+                        # Non-blocking check for control frames or unexpected messages
+                        msg = ws.receive(timeout=0)
+                        if msg is None: # Connection closed
+                            break
+                    except:
+                        pass # Timeout is expected
+                        
+                    # 2. Try to get a frame from the queue and send it
+                    try:
+                        # Use a small timeout to allow checking connection status frequently
+                        frame_data = frame_queue.get(timeout=0.1)
                         ws.send(frame_data)
                         with streams_lock:
                             active_streams[session_id]['stats']['frames_sent'] += 1
                     except queue.Empty:
-                        # No frame available, send heartbeat to check connection
-                        try:
-                            ws.send(json.dumps({'type': 'heartbeat'}))
-                        except Exception as hb_error:
-                            add_log('WARNING', 'streaming', f'Heartbeat failed, closing connection: {str(hb_error)}', {'session_id': session_id[:12]})
-                            break
+                        # No frame available right now, just loop again
+                        # Send periodic heartbeat if we haven't sent anything for a while
+                        pass
                     except Exception as e:
-                        add_log('ERROR', 'streaming', f'Desktop send error: {str(e)}', {'session_id': session_id[:12]})
+                        add_log('ERROR', 'streaming_desktop', f'Desktop send error: {str(e)}', {'session_id': session_id[:12]})
                         break
                         
         except Exception as e:

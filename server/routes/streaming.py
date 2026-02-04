@@ -12,6 +12,13 @@ import json
 import queue
 import threading
 
+# Import logging helper
+try:
+    from server.routes.logs import add_log
+except ImportError:
+    def add_log(level, source, message, details=None):
+        print(f"[{level}] {source}: {message}")
+
 
 streaming_bp = Blueprint('streaming', __name__, url_prefix='/api/streaming')
 
@@ -40,7 +47,7 @@ def init_streaming(app):
             ws: WebSocket connection
             session_id: Session identifier
         """
-        print(f"Stream connection established for session: {session_id}")
+        add_log('INFO', 'streaming', f'WebSocket connection attempt', {'session_id': session_id[:12]})
         
         # Register this connection
         with streams_lock:
@@ -66,12 +73,13 @@ def init_streaming(app):
             msg_data = json.loads(first_msg)
             
             client_type = msg_data.get('type')
+            add_log('INFO', 'streaming', f'Client identified as {client_type}', {'session_id': session_id[:12], 'client_id': client_id})
             
             if client_type == 'mobile':
                 # Mobile sender - receives frames and broadcasts to desktop viewers
                 with streams_lock:
                     active_streams[session_id]['mobile'] = ws
-                print(f"Mobile camera connected for session: {session_id}")
+                add_log('INFO', 'streaming', 'Mobile camera connected', {'session_id': session_id[:12]})
                 
                 # Handle incoming video frames from mobile
                 while True:
@@ -94,7 +102,7 @@ def init_streaming(app):
                                     except queue.Full:
                                         pass  # Skip this frame for this client
                     except Exception as e:
-                        print(f"Mobile receive error: {e}")
+                        add_log('ERROR', 'streaming', f'Mobile receive error: {str(e)}', {'session_id': session_id[:12]})
                         break
                         
             elif client_type == 'desktop':
@@ -103,7 +111,7 @@ def init_streaming(app):
                 
                 with streams_lock:
                     active_streams[session_id]['desktop_queues'][client_id] = frame_queue
-                print(f"Desktop viewer connected for session: {session_id}")
+                add_log('INFO', 'streaming', 'Desktop viewer connected', {'session_id': session_id[:12], 'client_id': client_id})
                 
                 # Send frames from queue to this desktop client
                 while True:
@@ -117,24 +125,25 @@ def init_streaming(app):
                         # No frame available, send heartbeat to check connection
                         try:
                             ws.send(json.dumps({'type': 'heartbeat'}))
-                        except:
+                        except Exception as hb_error:
+                            add_log('WARNING', 'streaming', f'Heartbeat failed, closing connection: {str(hb_error)}', {'session_id': session_id[:12]})
                             break
                     except Exception as e:
-                        print(f"Desktop send error: {e}")
+                        add_log('ERROR', 'streaming', f'Desktop send error: {str(e)}', {'session_id': session_id[:12]})
                         break
                         
         except Exception as e:
-            print(f"Stream error for session {session_id}: {e}")
+            add_log('ERROR', 'streaming', f'Stream error: {str(e)}', {'session_id': session_id[:12]})
         finally:
             # Clean up on disconnect
             with streams_lock:
                 if session_id in active_streams:
                     if client_type == 'mobile' and active_streams[session_id]['mobile'] == ws:
                         active_streams[session_id]['mobile'] = None
-                        print(f"Mobile camera disconnected for session: {session_id}")
+                        add_log('INFO', 'streaming', 'Mobile camera disconnected', {'session_id': session_id[:12]})
                     elif client_type == 'desktop' and client_id in active_streams[session_id]['desktop_queues']:
                         del active_streams[session_id]['desktop_queues'][client_id]
-                        print(f"Desktop viewer disconnected for session: {session_id}")
+                        add_log('INFO', 'streaming', 'Desktop viewer disconnected', {'session_id': session_id[:12]})
                     
                     # Clean up session if no more connections
                     if (session_id in active_streams and 

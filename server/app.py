@@ -20,6 +20,7 @@ from server.routes.capture import capture_bp
 from server.routes.streaming import streaming_bp, init_streaming
 from server.routes.processing import processing_bp
 from server.routes.export import export_bp
+from server.routes.logs import logs_bp
 import threading
 import time
 import logging
@@ -94,6 +95,7 @@ def create_app():
     app.register_blueprint(streaming_bp)
     app.register_blueprint(processing_bp)
     app.register_blueprint(export_bp)
+    app.register_blueprint(logs_bp)
     
     # Start session cleanup background thread
     start_cleanup_worker(app)

@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Logs - Document Scanner</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --border-color: #30363d;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --accent-purple: #a371f7;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover {
+            background: var(--border-color);
+        }
+        
+        .btn-primary {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: #fff;
+        }
+        
+        .btn-primary:hover {
+            background: #4393e6;
+        }
+        
+        .btn-danger {
+            background: var(--accent-red);
+            border-color: var(--accent-red);
+            color: #fff;
+        }
+        
+        .back-link {
+            color: var(--accent-blue);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .stat-card h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+        }
+        
+        .stat-value.green { color: var(--accent-green); }
+        .stat-value.yellow { color: var(--accent-yellow); }
+        .stat-value.red { color: var(--accent-red); }
+        .stat-value.blue { color: var(--accent-blue); }
+        
+        .streaming-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .streaming-section h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .stream-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .stream-table th,
+        .stream-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .stream-table th {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        
+        .status-dot.connected { background: var(--accent-green); }
+        .status-dot.disconnected { background: var(--accent-red); }
+        
+        .no-streams {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 2rem;
+        }
+        
+        .logs-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .logs-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        
+        .logs-header h2 {
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .filter-select {
+            padding: 0.375rem 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+        
+        .logs-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 0.8125rem;
+            display: grid;
+            grid-template-columns: 180px 70px 100px 1fr;
+            gap: 1rem;
+            align-items: start;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-entry:hover {
+            background: var(--bg-tertiary);
+        }
+        
+        .log-timestamp {
+            color: var(--text-secondary);
+        }
+        
+        .log-level {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .log-level.INFO { background: rgba(88, 166, 255, 0.2); color: var(--accent-blue); }
+        .log-level.WARNING { background: rgba(210, 153, 34, 0.2); color: var(--accent-yellow); }
+        .log-level.ERROR { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .log-level.DEBUG { background: rgba(163, 113, 247, 0.2); color: var(--accent-purple); }
+        
+        .log-source {
+            color: var(--accent-green);
+        }
+        
+        .log-message {
+            word-break: break-word;
+        }
+        
+        .log-details {
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+            font-size: 0.75rem;
+        }
+        
+        .no-logs {
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 3rem;
+        }
+        
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .auto-refresh input {
+            accent-color: var(--accent-blue);
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @media (max-width: 768px) {
+            .log-entry {
+                grid-template-columns: 1fr;
+                gap: 0.25rem;
+            }
+            
+            .logs-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <a href="/" class="back-link">← Back to Scanner</a>
+            <h1>📋 Application Logs</h1>
+        </div>
+        <div class="header-actions">
+            <label class="auto-refresh">
+                <input type="checkbox" id="autoRefresh" checked>
+                Auto-refresh
+                <span id="refreshIndicator" class="pulse">●</span>
+            </label>
+            <button class="btn" onclick="refreshData()">↻ Refresh</button>
+            <button class="btn btn-danger" onclick="clearLogs()">🗑 Clear Logs</button>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Active Streams</h3>
+                <div class="stat-value blue" id="activeStreams">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Logs</h3>
+                <div class="stat-value" id="totalLogs">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Errors</h3>
+                <div class="stat-value red" id="errorCount">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Warnings</h3>
+                <div class="stat-value yellow" id="warningCount">0</div>
+            </div>
+        </div>
+        
+        <!-- Streaming Status -->
+        <div class="streaming-section">
+            <h2>📡 Active Streaming Sessions</h2>
+            <div id="streamingContent">
+                <div class="no-streams">No active streaming sessions</div>
+            </div>
+        </div>
+        
+        <!-- Logs -->
+        <div class="logs-section">
+            <div class="logs-header">
+                <h2>📝 Recent Logs</h2>
+                <div class="filters">
+                    <select class="filter-select" id="levelFilter" onchange="refreshLogs()">
+                        <option value="">All Levels</option>
+                        <option value="ERROR">Errors</option>
+                        <option value="WARNING">Warnings</option>
+                        <option value="INFO">Info</option>
+                        <option value="DEBUG">Debug</option>
+                    </select>
+                    <select class="filter-select" id="sourceFilter" onchange="refreshLogs()">
+                        <option value="">All Sources</option>
+                        <option value="streaming">Streaming</option>
+                        <option value="capture">Capture</option>
+                        <option value="session">Session</option>
+                        <option value="processing">Processing</option>
+                        <option value="export">Export</option>
+                    </select>
+                    <select class="filter-select" id="countFilter" onchange="refreshLogs()">
+                        <option value="50">Last 50</option>
+                        <option value="100" selected>Last 100</option>
+                        <option value="200">Last 200</option>
+                        <option value="500">Last 500</option>
+                    </select>
+                </div>
+            </div>
+            <div class="logs-container" id="logsContainer">
+                <div class="no-logs">Loading logs...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let autoRefreshInterval = null;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshData();
+            startAutoRefresh();
+            
+            document.getElementById('autoRefresh').addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    startAutoRefresh();
+                } else {
+                    stopAutoRefresh();
+                }
+            });
+        });
+        
+        function startAutoRefresh() {
+            document.getElementById('refreshIndicator').style.display = 'inline';
+            autoRefreshInterval = setInterval(refreshData, 2000);
+        }
+        
+        function stopAutoRefresh() {
+            document.getElementById('refreshIndicator').style.display = 'none';
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+        
+        async function refreshData() {
+            await Promise.all([refreshStats(), refreshLogs()]);
+        }
+        
+        async function refreshStats() {
+            try {
+                const response = await fetch('/api/logs/stats');
+                const data = await response.json();
+                
+                // Update stat cards
+                document.getElementById('activeStreams').textContent = data.streaming.active_sessions;
+                document.getElementById('totalLogs').textContent = data.logs.total;
+                document.getElementById('errorCount').textContent = data.logs.by_level.ERROR || 0;
+                document.getElementById('warningCount').textContent = data.logs.by_level.WARNING || 0;
+                
+                // Update streaming table
+                const streamingContent = document.getElementById('streamingContent');
+                if (data.streaming.sessions.length === 0) {
+                    streamingContent.innerHTML = '<div class="no-streams">No active streaming sessions</div>';
+                } else {
+                    streamingContent.innerHTML = `
+                        <table class="stream-table">
+                            <thead>
+                                <tr>
+                                    <th>Session</th>
+                                    <th>Mobile</th>
+                                    <th>Desktop Viewers</th>
+                                    <th>Frames In</th>
+                                    <th>Frames Out</th>
+                                    <th>FPS In</th>
+                                    <th>FPS Out</th>
+                                    <th>Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.streaming.sessions.map(s => `
+                                    <tr>
+                                        <td><code>${s.session_id}</code></td>
+                                        <td>
+                                            <span class="status-dot ${s.mobile_connected ? 'connected' : 'disconnected'}"></span>
+                                            ${s.mobile_connected ? 'Connected' : 'Disconnected'}
+                                        </td>
+                                        <td>${s.desktop_viewers}</td>
+                                        <td>${s.frames_received}</td>
+                                        <td>${s.frames_sent}</td>
+                                        <td>${s.fps_in}</td>
+                                        <td>${s.fps_out}</td>
+                                        <td>${formatDuration(s.elapsed_seconds)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to fetch stats:', error);
+            }
+        }
+        
+        async function refreshLogs() {
+            try {
+                const level = document.getElementById('levelFilter').value;
+                const source = document.getElementById('sourceFilter').value;
+                const count = document.getElementById('countFilter').value;
+                
+                const params = new URLSearchParams({ count });
+                if (level) params.append('level', level);
+                if (source) params.append('source', source);
+                
+                const response = await fetch(`/api/logs/?${params}`);
+                const data = await response.json();
+                
+                const container = document.getElementById('logsContainer');
+                
+                if (data.logs.length === 0) {
+                    container.innerHTML = '<div class="no-logs">No logs found</div>';
+                } else {
+                    container.innerHTML = data.logs.map(log => `
+                        <div class="log-entry">
+                            <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
+                            <span class="log-level ${log.level}">${log.level}</span>
+                            <span class="log-source">${log.source}</span>
+                            <span class="log-message">
+                                ${escapeHtml(log.message)}
+                                ${log.details && Object.keys(log.details).length > 0 ? 
+                                    `<div class="log-details">${JSON.stringify(log.details)}</div>` : ''}
+                            </span>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Failed to fetch logs:', error);
+            }
+        }
+        
+        async function clearLogs() {
+            if (!confirm('Are you sure you want to clear all logs?')) return;
+            
+            try {
+                await fetch('/api/logs/clear', { method: 'POST' });
+                refreshData();
+            } catch (error) {
+                console.error('Failed to clear logs:', error);
+            }
+        }
+        
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString() + '.' + String(date.getMilliseconds()).padStart(3, '0');
+        }
+        
+        function formatDuration(seconds) {
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+            return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
